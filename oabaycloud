@@ -1,0 +1,334 @@
+package com.example.creditmanagementsystem;
+
+public class User {
+    private int id;
+    private String username;
+    private String passwordHash;
+    private String email;
+    private String role;
+
+    public User(int id, String username, String passwordHash, String email, String role) {
+        this.id = id;
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.email = email;
+        this.role = role;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public boolean checkPassword(String password) {
+        return BCrypt.checkpw(password, passwordHash);
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public String getRole() {
+        return role;
+    }
+}
+package com.example.creditmanagementsystem;
+
+public class Receivable {
+    private int id;
+    private int userId;
+    private double amount;
+    private String debtor;
+    private String dueDate;
+
+    public Receivable(int id, int userId, double amount, String debtor, String dueDate) {
+        this.id = id;
+        this.userId = userId;
+        this.amount = amount;
+        this.debtor = debtor;
+        this.dueDate = dueDate;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public int getUserId() {
+        return userId;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+
+    public String getDebtor() {
+        return debtor;
+    }
+
+    public String getDueDate() {
+        return dueDate;
+    }
+}
+package com.example.creditmanagementsystem;
+
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.FileHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
+
+import org.mindrot.jbcrypt.BCrypt;
+
+public class UserManagementSystem {
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/your_database_name";
+    private static final String DB_USER = "your_username";
+    private static final String DB_PASSWORD = "your_password";
+    private static final Logger LOGGER = Logger.getLogger(UserManagementSystem.class.getName());
+
+    static {
+        try {
+            FileHandler fileHandler = new FileHandler("user_management.log", true);
+            fileHandler.setFormatter(new SimpleFormatter());
+            LOGGER.addHandler(fileHandler);
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "无法初始化日志记录器", e);
+        }
+    }
+
+    // 注册方法
+    public boolean register(String username, String password, String email, String role) {
+        if (!isValidUsername(username) ||!isValidPassword(password) ||!isValidEmail(email)) {
+            LOGGER.log(Level.WARNING, "注册失败：无效的输入数据");
+            return false;
+        }
+
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            String hashedPassword = hashPassword(password);
+            String query = "INSERT INTO users (username, password, email, role) VALUES (?,?,?,?)";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setString(1, username);
+            preparedStatement.setString(2, hashedPassword);
+            preparedStatement.setString(3, email);
+            preparedStatement.setString(4, role);
+            int rowsInserted = preparedStatement.executeUpdate();
+            if (rowsInserted > 0) {
+                LOGGER.log(Level.INFO, "用户注册成功：" + username);
+            } else {
+                LOGGER.log(Level.WARNING, "用户注册失败：数据库插入操作失败");
+            }
+            return rowsInserted > 0;
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "用户注册失败：数据库连接或操作错误", e);
+            return false;
+        }
+    }
+
+    // 登录方法
+    public User login(String username, String password) {
+        if (!isValidUsername(username) ||!isValidPassword(password)) {
+            LOGGER.log(Level.WARNING, "登录失败：无效的输入数据");
+            return null;
+        }
+
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            String query = "SELECT * FROM users WHERE username =?";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setString(1, username);
+            ResultSet resultSet = preparedStatement.executeQuery();
+            if (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                String storedPasswordHash = resultSet.getString("password");
+                String email = resultSet.getString("email");
+                String role = resultSet.getString("role");
+                User user = new User(id, username, storedPasswordHash, email, role);
+                if (user.checkPassword(password)) {
+                    LOGGER.log(Level.INFO, "用户登录成功：" + username);
+                    return user;
+                } else {
+                    LOGGER.log(Level.WARNING, "用户登录失败：密码错误");
+                }
+            } else {
+                LOGGER.log(Level.WARNING, "用户登录失败：用户不存在");
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "用户登录失败：数据库连接或操作错误", e);
+        }
+        return null;
+    }
+
+    // 登出方法（这里可以根据实际需求进行更多操作，如清除会话信息等）
+    public void logout(User user) {
+        LOGGER.log(Level.INFO, "用户登出成功：" + user.getUsername());
+        // 目前只是简单的示例，实际应用中可能需要更多逻辑
+    }
+
+    // 更新用户信息方法
+    public boolean updateUserInfo(User user, String newEmail) {
+        if (!isValidEmail(newEmail)) {
+            LOGGER.log(Level.WARNING, "更新用户信息失败：无效的邮箱地址");
+            return false;
+        }
+
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            String query = "UPDATE users SET email =? WHERE id =?";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setString(1, newEmail);
+            preparedStatement.setInt(2, user.getId());
+            int rowsUpdated = preparedStatement.executeUpdate();
+            if (rowsUpdated > 0) {
+                LOGGER.log(Level.INFO, "用户信息更新成功：" + user.getUsername());
+            } else {
+                LOGGER.log(Level.WARNING, "用户信息更新失败：数据库更新操作失败");
+            }
+            return rowsUpdated > 0;
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "用户信息更新失败：数据库连接或操作错误", e);
+            return false;
+        }
+    }
+
+    // 获取用户角色方法
+    public String getUserRole(User user) {
+        return user.getRole();
+    }
+
+    // 模拟为其他系统提供用户数据
+    public List<User> provideUserDataToOtherSystems() {
+        List<User> userData = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            String query = "SELECT * FROM users";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            ResultSet resultSet = preparedStatement.executeQuery();
+            while (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                String username = resultSet.getString("username");
+                String passwordHash = resultSet.getString("password");
+                String email = resultSet.getString("email");
+                String role = resultSet.getString("role");
+                userData.add(new User(id, username, passwordHash, email, role));
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "获取用户数据失败：数据库连接或操作错误", e);
+        }
+        return userData;
+    }
+
+    // 密码加密方法
+    private String hashPassword(String password) {
+        try {
+            SecureRandom random = SecureRandom.getInstanceStrong();
+            byte[] salt = new byte[16];
+            random.nextBytes(salt);
+            return BCrypt.hashpw(password, BCrypt.gensalt(12, salt));
+        } catch (NoSuchAlgorithmException e) {
+            LOGGER.log(Level.SEVERE, "密码加密失败", e);
+            return null;
+        }
+    }
+
+    // 密码重置方法
+    public boolean resetPassword(String username, String newPassword) {
+        if (!isValidUsername(username) ||!isValidPassword(newPassword)) {
+            LOGGER.log(Level.WARNING, "密码重置失败：无效的输入数据");
+            return false;
+        }
+
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            String hashedPassword = hashPassword(newPassword);
+            String query = "UPDATE users SET password =? WHERE username =?";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setString(1, hashedPassword);
+            preparedStatement.setString(2, username);
+            int rowsUpdated = preparedStatement.executeUpdate();
+            if (rowsUpdated > 0) {
+                LOGGER.log(Level.INFO, "密码重置成功：" + username);
+            } else {
+                LOGGER.log(Level.WARNING, "密码重置失败：用户不存在或数据库更新操作失败");
+            }
+            return rowsUpdated > 0;
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "密码重置失败：数据库连接或操作错误", e);
+            return false;
+        }
+    }
+
+    // 输入验证方法
+    private boolean isValidUsername(String username) {
+        // 简单验证，可根据实际需求扩展
+        return username!= null && username.matches("^[a-zA-Z0-9_]{3,20}$");
+    }
+
+    private boolean isValidPassword(String password) {
+        // 简单验证，可根据实际需求扩展
+        return password!= null && password.length() >= 6;
+    }
+
+    private boolean isValidEmail(String email) {
+        // 简单验证，可根据实际需求扩展
+        return email!= null && email.matches("^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$");
+    }
+
+    // 与应收账款数据库互动的方法：添加应收账款记录
+    public boolean addReceivable(User user, double amount, String debtor, String dueDate) {
+        if (user == null) {
+            LOGGER.log(Level.WARNING, "添加应收账款失败：用户未登录");
+            return false;
+        }
+
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            String query = "INSERT INTO receivables (user_id, amount, debtor, due_date) VALUES (?,?,?,?)";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, user.getId());
+            preparedStatement.setDouble(2, amount);
+            preparedStatement.setString(3, debtor);
+            preparedStatement.setString(4, dueDate);
+            int rowsInserted = preparedStatement.executeUpdate();
+            if (rowsInserted > 0) {
+                LOGGER.log(Level.INFO, "应收账款添加成功：用户 " + user.getUsername() + "，金额 " + amount);
+            } else {
+                LOGGER.log(Level.WARNING, "应收账款添加失败：数据库插入操作失败");
+            }
+            return rowsInserted > 0;
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "应收账款添加失败：数据库连接或操作错误", e);
+            return false;
+        }
+    }
+
+    // 与应收账款数据库互动的方法：查看应收账款记录
+    public List<Receivable> viewReceivables(User user) {
+        List<Receivable> receivables = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            String query;
+            if ("管理员".equals(user.getRole())) {
+                query = "SELECT * FROM receivables";
+            } else {
+                query = "SELECT * FROM receivables WHERE user_id =?";
+            }
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            if (!"管理员".equals(user.getRole())) {
+                preparedStatement.setInt(1, user.getId());
+            }
+            ResultSet resultSet = preparedStatement.executeQuery();
+            while (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                int userId = resultSet.getInt("user_id");
+                double amount = resultSet.getDouble("amount");
+                String debtor = resultSet.getString("debtor");
+                String dueDate = resultSet.getString("due_date");
+                receivables.add(new Receivable(id, userId, amount, debtor, dueDate));
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "查看应收账款失败：数据库连接或操作错误", e);
+        }
